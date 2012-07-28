@@ -43,6 +43,7 @@ struct boot_img_hdr
 
     uint32_t tags_addr;    /* physical addr for kernel tags */
     uint32_t page_size;    /* flash page size we assume */
+    uint32_t dt_size;      /* device tree in bytes */
     uint32_t unused;       /* reserved for future expansion: MUST be 0 */
 
     /* operating system version and security patch level; for
@@ -73,10 +74,13 @@ struct boot_img_hdr
 ** +-----------------+
 ** | second stage    | o pages
 ** +-----------------+
+** | device tree     | p pages
+** +-----------------+
 **
 ** n = (kernel_size + page_size - 1) / page_size
 ** m = (ramdisk_size + page_size - 1) / page_size
 ** o = (second_size + page_size - 1) / page_size
+** p = (dt_size + page_size - 1) / page_size
 **
 ** 0. all entities are page_size aligned in flash
 ** 1. kernel and ramdisk are required (size != 0)

@@ -84,17 +84,23 @@ unsigned int decode_uid(const char *s)
  * daemon. We communicate the file descriptor's value via the environment
  * variable ANDROID_SOCKET_ENV_PREFIX<name> ("ANDROID_SOCKET_foo").
  */
-int create_socket(const char *name, int type, mode_t perm, uid_t uid, gid_t gid)
+int create_socket(const char *name, int type, mode_t perm, uid_t uid, gid_t gid, const char *socketcon)
 {
     struct sockaddr_un addr;
     int fd, ret;
-    char *secon;
+    char *filecon;
+
+    if (socketcon)
+        setsockcreatecon(socketcon);
 
     fd = socket(PF_UNIX, type, 0);
     if (fd < 0) {
         ERROR("Failed to open socket '%s': %s\n", name, strerror(errno));
         return -1;
     }
+
+    if (socketcon)
+        setsockcreatecon(NULL);
 
     memset(&addr, 0 , sizeof(addr));
     addr.sun_family = AF_UNIX;
@@ -107,11 +113,11 @@ int create_socket(const char *name, int type, mode_t perm, uid_t uid, gid_t gid)
         goto out_close;
     }
 
-    secon = NULL;
+    filecon = NULL;
     if (sehandle) {
-        ret = selabel_lookup(sehandle, &secon, addr.sun_path, S_IFSOCK);
+        ret = selabel_lookup(sehandle, &filecon, addr.sun_path, S_IFSOCK);
         if (ret == 0)
-            setfscreatecon(secon);
+            setfscreatecon(filecon);
     }
 
     ret = bind(fd, (struct sockaddr *) &addr, sizeof (addr));
@@ -121,7 +127,7 @@ int create_socket(const char *name, int type, mode_t perm, uid_t uid, gid_t gid)
     }
 
     setfscreatecon(NULL);
-    freecon(secon);
+    freecon(filecon);
 
     chown(addr.sun_path, uid, gid);
     chmod(addr.sun_path, perm);
@@ -402,10 +408,6 @@ void get_hardware_name(char *hardware, unsigned int *revision)
     int fd, n;
     char *x, *hw, *rev;
 
-    /* Hardware string was provided on kernel command line */
-    if (hardware[0])
-        return;
-
     fd = open("/proc/cpuinfo", O_RDONLY);
     if (fd < 0) return;
 
@@ -417,18 +419,21 @@ void get_hardware_name(char *hardware, unsigned int *revision)
     hw = strstr(data, "\nHardware");
     rev = strstr(data, "\nRevision");
 
-    if (hw) {
-        x = strstr(hw, ": ");
-        if (x) {
-            x += 2;
-            n = 0;
-            while (*x && *x != '\n') {
-                if (!isspace(*x))
-                    hardware[n++] = tolower(*x);
-                x++;
-                if (n == 31) break;
+    /* Hardware string was provided on kernel command line */
+    if (!hardware[0]) {
+        if (hw) {
+            x = strstr(hw, ": ");
+            if (x) {
+                x += 2;
+                n = 0;
+                while (*x && *x != '\n') {
+                    if (!isspace(*x))
+                        hardware[n++] = tolower(*x);
+                    x++;
+                    if (n == 31) break;
+                }
+                hardware[n] = 0;
             }
-            hardware[n] = 0;
         }
     }
 

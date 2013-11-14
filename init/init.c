@@ -48,6 +48,10 @@
 
 #include <sys/system_properties.h>
 
+#ifndef INITLOGO
+#include <linux/kd.h>
+#endif
+
 #include "devices.h"
 #include "init.h"
 #include "log.h"
@@ -69,11 +73,17 @@ static int property_triggers_enabled = 0;
 static int   bootchart_count;
 #endif
 
+#ifndef BOARD_CHARGING_CMDLINE_NAME
+#define BOARD_CHARGING_CMDLINE_NAME "androidboot.battchg_pause"
+#define BOARD_CHARGING_CMDLINE_VALUE "true"
+#endif
+
 static char console[32];
 static char bootmode[32];
 static char hardware[32];
 static unsigned revision = 0;
 static char qemu[32];
+static char battchg_pause[32];
 
 static struct action *cur_action = NULL;
 static struct command *cur_command = NULL;
@@ -95,21 +105,109 @@ static time_t process_needs_restart;
 
 static const char *ENV[32];
 
+static unsigned emmc_boot = 0;
+
+static unsigned charging_mode = 0;
+
+static const char *expand_environment(const char *val)
+{
+    int n;
+    const char *prev_pos = NULL, *copy_pos;
+    size_t len, prev_len = 0, copy_len;
+    char *expanded;
+
+    /* Basic expansion of environment variable; for now
+       we only assume 1 expansion at the start of val
+       and that it is marked as ${var} */
+    if (!val) {
+        return NULL;
+    }
+
+    if ((val[0] == '$') && (val[1] == '{')) {
+        for (n = 0; n < 31; n++) {
+            if (ENV[n]) {
+                len = strcspn(ENV[n], "=");
+                if (!strncmp(&val[2], ENV[n], len)
+                      && (val[2 + len] == '}')) {
+                    /* Matched existing env */
+                    prev_pos = &ENV[n][len + 1];
+                    prev_len = strlen(prev_pos);
+                    break;
+                }
+            }
+        }
+        copy_pos = index(val, '}');
+        if (copy_pos) {
+            copy_pos++;
+            copy_len = strlen(copy_pos);
+        } else {
+            copy_pos = val;
+            copy_len = strlen(val);
+        }
+    } else {
+        copy_pos = val;
+        copy_len = strlen(val);
+    }
+
+    len = prev_len + copy_len + 1;
+    expanded = malloc(len);
+    if (expanded) {
+        if (prev_pos) {
+            snprintf(expanded, len, "%s%s", prev_pos, copy_pos);
+        } else {
+            snprintf(expanded, len, "%s", copy_pos);
+        }
+    }
+
+    /* caller free */
+    return expanded;
+}
+
 /* add_environment - add "key=value" to the current environment */
 int add_environment(const char *key, const char *val)
 {
     int n;
+    const char *expanded;
+
+    expanded = expand_environment(val);
+    if (!expanded) {
+        goto failed;
+    }
 
     for (n = 0; n < 31; n++) {
         if (!ENV[n]) {
-            size_t len = strlen(key) + strlen(val) + 2;
+            size_t len = strlen(key) + strlen(expanded) + 2;
             char *entry = malloc(len);
-            snprintf(entry, len, "%s=%s", key, val);
+            if (!entry) {
+                goto failed_cleanup;
+            }
+            snprintf(entry, len, "%s=%s", key, expanded);
+            free((char *)expanded);
             ENV[n] = entry;
             return 0;
+        } else {
+            char *entry;
+            size_t len = strlen(key);
+            if(!strncmp(ENV[n], key, len) && ENV[n][len] == '=') {
+                len = len + strlen(expanded) + 2;
+                entry = malloc(len);
+                if (!entry) {
+                    goto failed_cleanup;
+                }
+
+                free((char *)ENV[n]);
+                snprintf(entry, len, "%s=%s", key, expanded);
+                free((char *)expanded);
+                ENV[n] = entry;
+                return 0;
+            }
         }
     }
 
+failed_cleanup:
+    free((char *)expanded);
+failed:
+    ERROR("Fail to add env variable: %s. Not enough memory!", key);
     return 1;
 }
 
@@ -250,14 +348,12 @@ void service_start(struct service *svc, const char *dynamic_args)
         for (ei = svc->envvars; ei; ei = ei->next)
             add_environment(ei->name, ei->value);
 
-        setsockcreatecon(scon);
-
         for (si = svc->sockets; si; si = si->next) {
             int socket_type = (
                     !strcmp(si->type, "stream") ? SOCK_STREAM :
                         (!strcmp(si->type, "dgram") ? SOCK_DGRAM : SOCK_SEQPACKET));
             int s = create_socket(si->name, socket_type,
-                                  si->perm, si->uid, si->gid);
+                                  si->perm, si->uid, si->gid, si->socketcon ?: scon);
             if (s >= 0) {
                 publish_socket(si->name, s);
             }
@@ -265,7 +361,6 @@ void service_start(struct service *svc, const char *dynamic_args)
 
         freecon(scon);
         scon = NULL;
-        setsockcreatecon(NULL);
 
         if (svc->ioprio_class != IoSchedClass_NONE) {
             if (android_set_ioprio(getpid(), svc->ioprio_class, svc->ioprio_pri)) {
@@ -657,6 +752,7 @@ static int console_init_action(int nargs, char **args)
         have_console = 1;
     close(fd);
 
+#ifdef INITLOGO
     if( load_565rle_image(INIT_IMAGE_FILE) ) {
         fd = open("/dev/tty0", O_WRONLY);
         if (fd >= 0) {
@@ -680,6 +776,13 @@ static int console_init_action(int nargs, char **args)
             close(fd);
         }
     }
+#else
+    fd = open("/dev/tty0", O_RDWR | O_SYNC);
+    if (fd >= 0) {
+        ioctl(fd, KDSETMODE, KD_GRAPHICS);
+        close(fd);
+    }
+#endif
     return 0;
 }
 
@@ -705,6 +808,14 @@ static void import_kernel_nv(char *name, int for_emulator)
 
     if (!strcmp(name,"qemu")) {
         strlcpy(qemu, value, sizeof(qemu));
+#ifdef WANTS_EMMC_BOOT
+    } else if (!strcmp(name,"androidboot.emmc")) {
+        if (!strcmp(value,"true")) {
+            emmc_boot = 1;
+        }
+#endif
+    } else if (!strcmp(name,BOARD_CHARGING_CMDLINE_NAME)) {
+        strlcpy(battchg_pause, value, sizeof(battchg_pause));
     } else if (!strncmp(name, "androidboot.", 12) && name_len > 12) {
         const char *boot_prop_name = name + 12;
         char prop[PROP_NAME_MAX];
@@ -713,6 +824,10 @@ static void import_kernel_nv(char *name, int for_emulator)
         cnt = snprintf(prop, sizeof(prop), "ro.boot.%s", boot_prop_name);
         if (cnt < PROP_NAME_MAX)
             property_set(prop, value);
+#ifdef HAS_SEMC_BOOTLOADER
+    } else if (!strcmp(name,"serialno")) {
+        property_set("ro.boot.serialno", value);
+#endif
     }
 }
 
@@ -757,6 +872,8 @@ static void export_kernel_boot_props(void)
 
     snprintf(tmp, PROP_VALUE_MAX, "%d", revision);
     property_set("ro.revision", tmp);
+    property_set("ro.emmc",emmc_boot ? "1" : "0");
+    property_set("ro.boot.emmc", emmc_boot ? "1" : "0");
 
     /* TODO: these are obsolete. We should delete them */
     if (!strcmp(bootmode,"factory"))
@@ -940,6 +1057,25 @@ int audit_callback(void *data, security_class_t cls, char *buf, size_t len)
     return 0;
 }
 
+static int charging_mode_booting(void)
+{
+#ifndef BOARD_CHARGING_MODE_BOOTING_LPM
+    return 0;
+#else
+    int f;
+    char cmb;
+    f = open(BOARD_CHARGING_MODE_BOOTING_LPM, O_RDONLY);
+    if (f < 0)
+        return 0;
+
+    if (1 != read(f, (void *)&cmb,1))
+        return 0;
+
+    close(f);
+    return ('1' == cmb);
+#endif
+}
+
 static void selinux_initialize(void)
 {
     if (selinux_is_disabled()) {
@@ -984,6 +1120,11 @@ int main(int argc, char **argv)
          * together in the initramdisk on / and then we'll
          * let the rc file figure out the rest.
          */
+    /* Don't repeat the setup of these filesystems,
+     * it creates double mount points with an unknown effect
+     * on the system.  This init file is for 2nd-init anyway.
+     */
+#ifndef NO_DEVFS_SETUP
     mkdir("/dev", 0755);
     mkdir("/proc", 0755);
     mkdir("/sys", 0755);
@@ -1006,6 +1147,7 @@ int main(int argc, char **argv)
          */
     open_devnull_stdio();
     klog_init();
+#endif
     property_init();
 
     get_hardware_name(hardware, &revision);
@@ -1036,7 +1178,23 @@ int main(int argc, char **argv)
         property_load_boot_defaults();
 
     INFO("reading config file\n");
-    init_parse_config_file("/init.rc");
+
+    if (!charging_mode_booting())
+       init_parse_config_file("/init.rc");
+    else
+       init_parse_config_file("/lpm.rc");
+
+    /* Check for an emmc initialisation file and read if present */
+    if (emmc_boot && access("/init.emmc.rc", R_OK) == 0) {
+        INFO("Reading emmc config file");
+            init_parse_config_file("/init.emmc.rc");
+    }
+
+    /* Check for a target specific initialisation file and read if present */
+    if (access("/init.target.rc", R_OK) == 0) {
+        INFO("Reading target specific config file");
+            init_parse_config_file("/init.target.rc");
+    }
 
     action_for_each_trigger("early-init", action_add_queue_tail);
 
@@ -1051,7 +1209,11 @@ int main(int argc, char **argv)
     /* skip mounting filesystems in charger mode */
     if (!is_charger) {
         action_for_each_trigger("early-fs", action_add_queue_tail);
-        action_for_each_trigger("fs", action_add_queue_tail);
+        if(emmc_boot) {
+            action_for_each_trigger("emmc-fs", action_add_queue_tail);
+        } else {
+            action_for_each_trigger("fs", action_add_queue_tail);
+        }
         action_for_each_trigger("post-fs", action_add_queue_tail);
         action_for_each_trigger("post-fs-data", action_add_queue_tail);
     }
@@ -1064,6 +1226,11 @@ int main(int argc, char **argv)
     queue_builtin_action(property_service_init_action, "property_service_init");
     queue_builtin_action(signal_init_action, "signal_init");
     queue_builtin_action(check_startup_action, "check_startup");
+
+    /* Older bootloaders use non-standard charging modes. Check for
+     * those now, after mounting the filesystems */
+    if (strcmp(battchg_pause, BOARD_CHARGING_CMDLINE_VALUE) == 0)
+        is_charger = 1;
 
     if (is_charger) {
         action_for_each_trigger("charger", action_add_queue_tail);

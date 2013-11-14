@@ -30,6 +30,14 @@ LOCAL_STATIC_LIBRARIES += libsuspend
 endif
 LOCAL_STATIC_LIBRARIES += libz libstdc++ libcutils liblog libm libc
 
+ifneq ($(BOARD_BATTERY_DEVICE_NAME),)
+LOCAL_CFLAGS += -DBATTERY_DEVICE_NAME=\"$(BOARD_BATTERY_DEVICE_NAME)\"
+endif
+
+ifeq ($(BOARD_ALLOW_SUSPEND_IN_CHARGER),true)
+LOCAL_CFLAGS += -DALLOW_SUSPEND_IN_CHARGER
+endif
+
 include $(BUILD_EXECUTABLE)
 
 define _add-charger-image
@@ -46,8 +54,13 @@ endef
 
 _img_modules :=
 _images :=
+ifneq ($(BOARD_CHARGER_RES),)
+$(foreach _img, $(call find-subdir-subdir-files, ../../../$(BOARD_CHARGER_RES), "*.png"), \
+  $(eval $(call _add-charger-image,$(_img))))
+else
 $(foreach _img, $(call find-subdir-subdir-files, "images", "*.png"), \
   $(eval $(call _add-charger-image,$(_img))))
+endif
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := charger_res_images

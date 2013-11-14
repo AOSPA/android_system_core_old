@@ -15,6 +15,7 @@
  */
 
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -35,6 +36,7 @@
 #include <cutils/android_reboot.h>
 #include <sys/system_properties.h>
 #include <fs_mgr.h>
+#include <fts.h>
 
 #include <selinux/selinux.h>
 #include <selinux/label.h>
@@ -52,6 +54,7 @@
 void add_environment(const char *name, const char *value);
 
 extern int init_module(void *, unsigned long, const char *);
+extern int init_export_rc_file(const char *);
 
 static int write_file(const char *path, const char *value)
 {
@@ -76,61 +79,47 @@ static int write_file(const char *path, const char *value)
     }
 }
 
-static int _open(const char *path)
-{
-    int fd;
-
-    fd = open(path, O_RDONLY | O_NOFOLLOW);
-    if (fd < 0)
-        fd = open(path, O_WRONLY | O_NOFOLLOW);
-
-    return fd;
-}
 
 static int _chown(const char *path, unsigned int uid, unsigned int gid)
 {
-    int fd;
     int ret;
 
-    fd = _open(path);
-    if (fd < 0) {
-        return -1;
-    }
+    struct stat p_statbuf;
 
-    ret = fchown(fd, uid, gid);
+    ret = lstat(path, &p_statbuf);
     if (ret < 0) {
-        int errno_copy = errno;
-        close(fd);
-        errno = errno_copy;
         return -1;
     }
 
-    close(fd);
+    if (S_ISLNK(p_statbuf.st_mode) == 1) {
+        errno = EINVAL;
+        return -1;
+    }
 
-    return 0;
+    ret = chown(path, uid, gid);
+
+    return ret;
 }
 
 static int _chmod(const char *path, mode_t mode)
 {
-    int fd;
     int ret;
 
-    fd = _open(path);
-    if (fd < 0) {
-        return -1;
-    }
+    struct stat p_statbuf;
 
-    ret = fchmod(fd, mode);
+    ret = lstat(path, &p_statbuf);
     if (ret < 0) {
-        int errno_copy = errno;
-        close(fd);
-        errno = errno_copy;
         return -1;
     }
 
-    close(fd);
+    if (S_ISLNK(p_statbuf.st_mode) == 1) {
+        errno = EINVAL;
+        return -1;
+    }
 
-    return 0;
+    ret = chmod(path, mode);
+
+    return ret;
 }
 
 static int insmod(const char *filename, char *options)
@@ -233,14 +222,82 @@ int do_class_reset(int nargs, char **args)
     return 0;
 }
 
+int do_export_rc(int nargs, char **args)
+{
+        /* Import environments from a specified file.
+         * The file content is of the form:
+         *     export <env name> <value>
+         * e.g.
+         *     export LD_PRELOAD /system/lib/xyz.so
+         *     export PROMPT abcde
+         * Differences between "import" and "export_rc":
+         * 1) export_rc can only import environment vars
+         * 2) export_rc is performed when the command
+         *    is executed rather than at the time the
+         *    command is parsed (i.e. "import")
+         */
+    return init_export_rc_file(args[1]);
+}
+
 int do_domainname(int nargs, char **args)
 {
     return write_file("/proc/sys/kernel/domainname", args[1]);
 }
 
+#define MAX_PARAMETERS 64
 int do_exec(int nargs, char **args)
 {
-    return -1;
+    pid_t pid;
+    int status, i, j;
+    char *par[MAX_PARAMETERS];
+    char prop_val[PROP_VALUE_MAX];
+    int len;
+
+    if (nargs > MAX_PARAMETERS)
+    {
+        return -1;
+    }
+
+    for(i=0, j=1; i<(nargs-1) ;i++,j++)
+    {
+        if ((args[j])
+            &&
+            (!expand_props(prop_val, args[j], sizeof(prop_val))))
+
+        {
+            len = strlen(args[j]);
+            if (strlen(prop_val) <= len) {
+                /* Overwrite arg with expansion.
+                 *
+                 * For now, only allow an expansion length that
+                 * can fit within the original arg length to
+                 * avoid extra allocations.
+                 * On failure, use original argument.
+                 */
+                strncpy(args[j], prop_val, len + 1);
+            }
+        }
+        par[i] = args[j];
+    }
+
+    par[i] = (char*)0;
+    pid = fork();
+    if (!pid)
+    {
+        char tmp[32];
+        int fd, sz;
+        get_property_workspace(&fd, &sz);
+        sprintf(tmp, "%d,%d", dup(fd), sz);
+        setenv("ANDROID_PROPERTY_WORKSPACE", tmp, 1);
+        execve(par[0], par, environ);
+        exit(0);
+    }
+    else
+    {
+        while(wait(&status)!=pid);
+    }
+
+    return 0;
 }
 
 int do_export(int nargs, char **args)
@@ -768,6 +825,47 @@ int do_chown(int nargs, char **args) {
     } else if (nargs == 4) {
         if (_chown(args[3], decode_uid(args[1]), decode_uid(args[2])) < 0)
             return -errno;
+    } else if (nargs == 5) {
+        int ret = 0;
+        int ftsflags = FTS_PHYSICAL;
+        FTS *fts;
+        FTSENT *ftsent;
+        char *options = args[1];
+        uid_t uid = decode_uid(args[2]);
+        uid_t gid = decode_uid(args[3]);
+        char * path_argv[] = {args[4], NULL};
+        if (strcmp(options, "-R")) {
+            ERROR("do_chown: Invalid argument: %s\n", args[1]);
+            return -EINVAL;
+        }
+        fts = fts_open(path_argv, ftsflags, NULL);
+        if (!fts) {
+            ERROR("do_chown: Error traversing hierarchy starting at %s\n", path_argv[0]);
+            return -errno;
+        }
+        while ((ftsent = fts_read(fts))) {
+            switch (ftsent->fts_info) {
+            case FTS_DP:
+            case FTS_SL:
+                break;
+            case FTS_DNR:
+            case FTS_ERR:
+            case FTS_NS:
+                ERROR("do_chown: Could not access %s\n", ftsent->fts_path);
+                fts_set(fts, ftsent, FTS_SKIP);
+                ret = -errno;
+                break;
+            default:
+                if (_chown(ftsent->fts_accpath, uid, gid) < 0) {
+                    ret = -errno;
+                    fts_set(fts, ftsent, FTS_SKIP);
+                }
+                break;
+            }
+        }
+        fts_close(fts);
+        if (ret)
+            return ret;
     } else {
         return -1;
     }

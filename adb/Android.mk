@@ -124,6 +124,12 @@ ifneq (,$(filter userdebug eng,$(TARGET_BUILD_VARIANT)))
 LOCAL_CFLAGS += -DALLOW_ADBD_ROOT=1
 endif
 
+ifeq ($(BOARD_ALWAYS_INSECURE),true)
+	LOCAL_CFLAGS += -DBOARD_ALWAYS_INSECURE
+endif
+
+LOCAL_C_INCLUDES += external/openssl/include
+
 LOCAL_MODULE := adbd
 
 LOCAL_FORCE_STATIC_EXECUTABLE := true

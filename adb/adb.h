@@ -122,6 +122,12 @@ struct asocket {
         */
     void (*ready)(asocket *s);
 
+        /* shutdown is called by the peer before it goes away.
+        ** the socket should not do any further calls on its peer.
+        ** Always followed by a call to close. Optional, i.e. can be NULL.
+        */
+    void (*shutdown)(asocket *s);
+
         /* close is called by the peer when it has gone away.
         ** we are not allowed to make any further calls on the
         ** peer once our close method is called.
@@ -233,7 +239,7 @@ struct alistener
 
 void print_packet(const char *label, apacket *p);
 
-asocket *find_local_socket(unsigned id);
+asocket *find_local_socket(unsigned local_id, unsigned remote_id);
 void install_local_socket(asocket *s);
 void remove_socket(asocket *s);
 void close_all_sockets(atransport *t);
@@ -457,6 +463,8 @@ int adb_commandline(int argc, char **argv);
 
 int connection_state(atransport *t);
 
+extern int recovery_mode;
+
 #define CS_ANY       -1
 #define CS_OFFLINE    0
 #define CS_BOOTLOADER 1
@@ -466,6 +474,8 @@ int connection_state(atransport *t);
 #define CS_NOPERM     5 /* Insufficient permissions to communicate with the device */
 #define CS_SIDELOAD   6
 #define CS_UNAUTHORIZED 7
+
+#define CS_ONLINE    10 /* recovery or device */
 
 extern int HOST;
 extern int SHELL_EXIT_NOTIFY_FD;

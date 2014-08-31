@@ -70,10 +70,13 @@ disabled
 setenv <name> <value>
    Set the environment variable <name> to <value> in the launched process.
 
-socket <name> <type> <perm> [ <user> [ <group> ] ]
+socket <name> <type> <perm> [ <user> [ <group> <context> ] ]
    Create a unix domain socket named /dev/socket/<name> and pass
    its fd to the launched process.  <type> must be "dgram", "stream" or "seqpacket".
    User and group default to 0.
+   Context is the SELinux security context for the socket.
+   It defaults to the service security context, as specified by seclabel or
+   computed based on the service executable file security context.
 
 user <username>
    Change to username before exec'ing this service.
@@ -158,8 +161,8 @@ chdir <directory>
 chmod <octal-mode> <path>
    Change file access permissions.
 
-chown <owner> <group> <path>
-   Change file owner and group.
+chown [-R] <owner> <group> <path>
+   Change file owner and group. "-R" is for recursive chown.
 
 chroot <directory>
   Change process root directory.
@@ -189,11 +192,17 @@ mount <type> <device> <dir> [ <mountoption> ]*
    device by name.
    <mountoption>s include "ro", "rw", "remount", "noatime", ...
 
-restorecon <path>
+restorecon <path> [ <path> ]*
    Restore the file named by <path> to the security context specified
    in the file_contexts configuration.
    Not required for directories created by the init.rc as these are
    automatically labeled correctly by init.
+
+restorecon_recursive <path> [ <path> ]*
+   Recursively restore the directory tree named by <path> to the
+   security contexts specified in the file_contexts configuration.
+   Do NOT use this with paths leading to shell-writable or app-writable
+   directories, e.g. /data/local/tmp, /data/data or any prefix thereof.
 
 setcon <securitycontext>
    Set the current process security context to the specified string.

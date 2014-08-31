@@ -141,6 +141,8 @@ ssize_t VectorImpl::insertAt(const void* item, size_t index, size_t numItems)
 {
     if (index > size())
         return BAD_INDEX;
+    if (numItems < 1)
+        return index;
     void* where = _grow(index, numItems);
     if (where) {
         if (item) {
@@ -384,7 +386,11 @@ void* VectorImpl::_grow(size_t where, size_t amount)
         {
             const SharedBuffer* cur_sb = SharedBuffer::bufferFromData(mStorage);
             SharedBuffer* sb = cur_sb->editResize(new_capacity * mItemSize);
-            mStorage = sb->data();
+            if (sb) {
+                mStorage = sb->data();
+            } else {
+                return NULL;
+            }
         } else {
             SharedBuffer* sb = SharedBuffer::alloc(new_capacity * mItemSize);
             if (sb) {
@@ -399,6 +405,8 @@ void* VectorImpl::_grow(size_t where, size_t amount)
                 }
                 release_storage();
                 mStorage = const_cast<void*>(array);
+            } else {
+                return NULL;
             }
         }
     } else {
@@ -436,7 +444,11 @@ void VectorImpl::_shrink(size_t where, size_t amount)
         {
             const SharedBuffer* cur_sb = SharedBuffer::bufferFromData(mStorage);
             SharedBuffer* sb = cur_sb->editResize(new_capacity * mItemSize);
-            mStorage = sb->data();
+            if (sb) {
+                mStorage = sb->data();
+            } else {
+                return;
+            }
         } else {
             SharedBuffer* sb = SharedBuffer::alloc(new_capacity * mItemSize);
             if (sb) {
@@ -451,6 +463,8 @@ void VectorImpl::_shrink(size_t where, size_t amount)
                 }
                 release_storage();
                 mStorage = const_cast<void*>(array);
+            } else{
+                return;
             }
         }
     } else {
@@ -503,6 +517,17 @@ void VectorImpl::_do_move_forward(void* dest, const void* from, size_t num) cons
 void VectorImpl::_do_move_backward(void* dest, const void* from, size_t num) const {
     do_move_backward(dest, from, num);
 }
+
+#if NEEDS_VECTORIMPL_SYMBOLS
+void VectorImpl::reservedVectorImpl1() { }
+void VectorImpl::reservedVectorImpl2() { }
+void VectorImpl::reservedVectorImpl3() { }
+void VectorImpl::reservedVectorImpl4() { }
+void VectorImpl::reservedVectorImpl5() { }
+void VectorImpl::reservedVectorImpl6() { }
+void VectorImpl::reservedVectorImpl7() { }
+void VectorImpl::reservedVectorImpl8() { }
+#endif
 
 /*****************************************************************************/
 
@@ -618,6 +643,17 @@ ssize_t SortedVectorImpl::remove(const void* item)
     }
     return i;
 }
+
+#if NEEDS_VECTORIMPL_SYMBOLS
+void SortedVectorImpl::reservedSortedVectorImpl1() { };
+void SortedVectorImpl::reservedSortedVectorImpl2() { };
+void SortedVectorImpl::reservedSortedVectorImpl3() { };
+void SortedVectorImpl::reservedSortedVectorImpl4() { };
+void SortedVectorImpl::reservedSortedVectorImpl5() { };
+void SortedVectorImpl::reservedSortedVectorImpl6() { };
+void SortedVectorImpl::reservedSortedVectorImpl7() { };
+void SortedVectorImpl::reservedSortedVectorImpl8() { };
+#endif
 
 /*****************************************************************************/
 

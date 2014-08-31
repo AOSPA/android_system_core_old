@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2013 The Android Open Source Project
+ * Copyright (C) 2013 The CyanogenMod Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,12 +36,20 @@
 using namespace android;
 
 // Periodic chores intervals in seconds
+#ifdef QCOM_HARDWARE
+#define DEFAULT_PERIODIC_CHORES_INTERVAL_FAST (60 * 10)
+//For the designs without low battery detection,need to enable
+//the default 60*10s wakeup timer to periodic check.
+#define DEFAULT_PERIODIC_CHORES_INTERVAL_SLOW -1
+#else
 #define DEFAULT_PERIODIC_CHORES_INTERVAL_FAST (60 * 1)
 #define DEFAULT_PERIODIC_CHORES_INTERVAL_SLOW (60 * 10)
+#endif
 
 static struct healthd_config healthd_config = {
     .periodic_chores_interval_fast = DEFAULT_PERIODIC_CHORES_INTERVAL_FAST,
     .periodic_chores_interval_slow = DEFAULT_PERIODIC_CHORES_INTERVAL_SLOW,
+
     .batteryStatusPath = String8(String8::kEmptyString),
     .batteryHealthPath = String8(String8::kEmptyString),
     .batteryPresentPath = String8(String8::kEmptyString),
@@ -50,6 +59,17 @@ static struct healthd_config healthd_config = {
     .batteryTechnologyPath = String8(String8::kEmptyString),
     .batteryCurrentNowPath = String8(String8::kEmptyString),
     .batteryChargeCounterPath = String8(String8::kEmptyString),
+
+    .dockBatterySupported = false,
+    .dockBatteryStatusPath = String8(String8::kEmptyString),
+    .dockBatteryHealthPath = String8(String8::kEmptyString),
+    .dockBatteryPresentPath = String8(String8::kEmptyString),
+    .dockBatteryCapacityPath = String8(String8::kEmptyString),
+    .dockBatteryVoltagePath = String8(String8::kEmptyString),
+    .dockBatteryTemperaturePath = String8(String8::kEmptyString),
+    .dockBatteryTechnologyPath = String8(String8::kEmptyString),
+    .dockBatteryCurrentNowPath = String8(String8::kEmptyString),
+    .dockBatteryChargeCounterPath = String8(String8::kEmptyString),
 };
 
 #define POWER_SUPPLY_SUBSYSTEM "power_supply"

@@ -95,6 +95,9 @@
 #define AID_NET_BT_STACK  3008  /* bluetooth: access config files */
 
 #define AID_EVERYBODY     9997  /* shared between all apps in the same profile */
+
+#define AID_SENSORS       3012 /* access to /dev/socket/sensor_ctl_socket & QCCI/QCSI */
+
 #define AID_MISC          9998  /* access to misc storage */
 #define AID_NOBODY        9999
 

@@ -45,6 +45,8 @@ static inline SchedPolicy _policy(SchedPolicy p)
 
 #define POLICY_DEBUG 0
 
+#define CAN_SET_SP_SYSTEM 0 // non-zero means to implement set_sched_policy(tid, SP_SYSTEM)
+
 // This prctl is only available in Android kernels.
 #define PR_SET_TIMERSLACK_PID 41
 
@@ -59,6 +61,9 @@ static int __sys_supports_schedgroups = -1;
 // File descriptors open to /dev/cpuctl/../tasks, setup by initialize, or -1 on error.
 static int bg_cgroup_fd = -1;
 static int fg_cgroup_fd = -1;
+#if CAN_SET_SP_SYSTEM
+static int system_cgroup_fd = -1;
+#endif
 
 // File descriptors open to /dev/cpuset/../tasks, setup by initialize, or -1 on error
 static int bg_cpuset_fd = -1;
@@ -101,16 +106,24 @@ static int add_tid_to_cgroup(int tid, int fd)
 
 static void __initialize(void) {
     char* filename;
-    if (!access("/dev/cpuctl/tasks", F_OK)) {
+    if (!access("/dev/cpuctl/apps/tasks", F_OK)) {
         __sys_supports_schedgroups = 1;
 
-        filename = "/dev/cpuctl/tasks";
+#if CAN_SET_SP_SYSTEM
+        filename = "/dev/cpuctl/apps/tasks";
+        system_cgroup_fd = open(filename, O_WRONLY | O_CLOEXEC);
+        if (system_cgroup_fd < 0) {
+            SLOGV("open of %s failed: %s\n", filename, strerror(errno));
+        }
+#endif
+
+        filename = "/dev/cpuctl/apps/tasks";
         fg_cgroup_fd = open(filename, O_WRONLY | O_CLOEXEC);
         if (fg_cgroup_fd < 0) {
             SLOGE("open of %s failed: %s\n", filename, strerror(errno));
         }
 
-        filename = "/dev/cpuctl/bg_non_interactive/tasks";
+        filename = "/dev/cpuctl/apps/bg_non_interactive/tasks";
         bg_cgroup_fd = open(filename, O_WRONLY | O_CLOEXEC);
         if (bg_cgroup_fd < 0) {
             SLOGE("open of %s failed: %s\n", filename, strerror(errno));
@@ -215,9 +228,11 @@ int get_sched_policy(int tid, SchedPolicy *policy)
         if (getSchedulerGroup(tid, grpBuf, sizeof(grpBuf)) < 0)
             return -1;
         if (grpBuf[0] == '\0') {
-            *policy = SP_FOREGROUND;
+            *policy = SP_SYSTEM;
         } else if (!strcmp(grpBuf, "bg_non_interactive")) {
             *policy = SP_BACKGROUND;
+        } else if (!strcmp(grpBuf, "apps")) {
+            *policy = SP_FOREGROUND;
         } else {
             errno = ERANGE;
             return -1;

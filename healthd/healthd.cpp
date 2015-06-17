@@ -134,10 +134,10 @@ static void healthd_mode_nop_battery_update(
     struct android::BatteryProperties* /*props*/) {
 }
 
-int healthd_register_event(int fd, void (*handler)(uint32_t)) {
+int healthd_register_event(int fd, void (*handler)(uint32_t), int events) {
     struct epoll_event ev;
 
-    ev.events = EPOLLIN | EPOLLWAKEUP;
+    ev.events = EPOLLIN | events;
     ev.data.ptr = (void *)handler;
     if (epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &ev) == -1) {
         KLOG_ERROR(LOG_TAG,
@@ -243,7 +243,7 @@ static void uevent_init(void) {
     }
 
     fcntl(uevent_fd, F_SETFL, O_NONBLOCK);
-    if (healthd_register_event(uevent_fd, uevent_event))
+    if (healthd_register_event(uevent_fd, uevent_event, 0))
         KLOG_ERROR(LOG_TAG,
                    "register for uevent events failed\n");
 }
@@ -266,7 +266,7 @@ static void wakealarm_init(void) {
         return;
     }
 
-    if (healthd_register_event(wakealarm_fd, wakealarm_event))
+    if (healthd_register_event(wakealarm_fd, wakealarm_event, EPOLLWAKEUP))
         KLOG_ERROR(LOG_TAG,
                    "Registration of wakealarm event failed\n");
 

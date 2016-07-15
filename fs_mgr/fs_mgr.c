@@ -60,6 +60,7 @@
 #define FSCK_LOG_FILE   "/dev/fscklogs/log"
 
 #define ZRAM_CONF_DEV   "/sys/block/zram0/disksize"
+#define ZRAM_STREAMS    "/sys/block/zram0/max_comp_streams"
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 
@@ -161,10 +162,10 @@ static void check_fs(char *blk_device, char *fs_type, char *target)
     } else if (!strcmp(fs_type, "f2fs")) {
             char *f2fs_fsck_argv[] = {
                     F2FS_FSCK_BIN,
-                    "-f",
+                    "-a",
                     blk_device
             };
-        INFO("Running %s -f %s\n", F2FS_FSCK_BIN, blk_device);
+        INFO("Running %s -a %s\n", F2FS_FSCK_BIN, blk_device);
 
         ret = android_fork_execvp_ext(ARRAY_SIZE(f2fs_fsck_argv), f2fs_fsck_argv,
                                       &status, true, LOG_KLOG | LOG_FILE,
@@ -859,6 +860,14 @@ int fs_mgr_swapon_all(struct fstab *fstab)
              * we can assume the device number is 0.
              */
             FILE *zram_fp;
+
+            /* The stream count parameter is only available on new kernels.
+             * It must be set before the disk size. */
+            zram_fp = fopen(ZRAM_STREAMS, "r+");
+            if (zram_fp) {
+                fprintf(zram_fp, "%d\n", fstab->recs[i].zram_streams);
+                fclose(zram_fp);
+            }
 
             zram_fp = fopen(ZRAM_CONF_DEV, "r+");
             if (zram_fp == NULL) {

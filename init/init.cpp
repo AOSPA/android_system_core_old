@@ -30,6 +30,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/resource.h>
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <termios.h>
@@ -69,7 +70,13 @@ struct selabel_handle *sehandle_prop;
 
 static int property_triggers_enabled = 0;
 
+#ifndef BOARD_CHARGING_CMDLINE_NAME
+#define BOARD_CHARGING_CMDLINE_NAME "androidboot.battchg_pause"
+#define BOARD_CHARGING_CMDLINE_VALUE "true"
+#endif
+
 static char qemu[32];
+static char battchg_pause[32];
 
 static struct action *cur_action = NULL;
 static struct command *cur_command = NULL;
@@ -263,6 +270,7 @@ void service_start(struct service *svc, const char *dynamic_args)
     if (pid == 0) {
         struct socketinfo *si;
         struct svcenvinfo *ei;
+        struct svcrlimitinfo *ri;
         char tmp[32];
         int fd, sz;
 
@@ -284,6 +292,13 @@ void service_start(struct service *svc, const char *dynamic_args)
                                   si->perm, si->uid, si->gid, si->socketcon ?: scon);
             if (s >= 0) {
                 publish_socket(si->name, s);
+            }
+        }
+
+        for (ri = svc->rlimits; ri; ri = ri->next) {
+            if (setrlimit(ri->resource, &ri->limit)) {
+                ERROR("Failed to set pid %d rlimit %d %lu %lu\n",
+                      getpid(), ri->resource, ri->limit.rlim_cur, ri->limit.rlim_max);
             }
         }
 
@@ -782,6 +797,8 @@ static void import_kernel_nv(char *name, bool for_emulator)
 
     if (!strcmp(name,"qemu")) {
         strlcpy(qemu, value, sizeof(qemu));
+    } else if (!strcmp(name,BOARD_CHARGING_CMDLINE_NAME)) {
+        strlcpy(battchg_pause, value, sizeof(battchg_pause));
     } else if (!strncmp(name, "androidboot.", 12) && name_len > 12) {
         const char *boot_prop_name = name + 12;
         char prop[PROP_NAME_MAX];
@@ -986,6 +1003,24 @@ static void selinux_initialize(bool in_kernel_domain) {
     }
 }
 
+static int charging_mode_booting(void) {
+#ifndef BOARD_CHARGING_MODE_BOOTING_LPM
+    return 0;
+#else
+    int f;
+    char cmb;
+    f = open(BOARD_CHARGING_MODE_BOOTING_LPM, O_RDONLY);
+    if (f < 0)
+        return 0;
+
+    if (1 != read(f, (void *)&cmb,1))
+        return 0;
+
+    close(f);
+    return ('1' == cmb);
+#endif
+}
+
 int main(int argc, char** argv) {
     if (!strcmp(basename(argv[0]), "ueventd")) {
         return ueventd_main(argc, argv);
@@ -1097,8 +1132,13 @@ int main(int argc, char** argv) {
 
     // Don't mount filesystems or start core system services in charger mode.
     char bootmode[PROP_VALUE_MAX];
-    if (property_get("ro.bootmode", bootmode) > 0 && strcmp(bootmode, "charger") == 0) {
+    if (((property_get("ro.bootmode", bootmode) > 0 && strcmp(bootmode, "charger") == 0) ||
+         strcmp(battchg_pause, BOARD_CHARGING_CMDLINE_VALUE) == 0)
+               || charging_mode_booting()) {
         action_for_each_trigger("charger", action_add_queue_tail);
+    } else if (strncmp(bootmode, "ffbm", 4) == 0) {
+        KLOG_ERROR("Booting into ffbm mode\n");
+        action_for_each_trigger("ffbm", action_add_queue_tail);
     } else {
         action_for_each_trigger("late-init", action_add_queue_tail);
     }

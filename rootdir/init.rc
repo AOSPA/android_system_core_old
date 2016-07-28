@@ -125,19 +125,27 @@ on init
     mkdir /dev/cpuctl
     mount cgroup none /dev/cpuctl cpu
     chown system system /dev/cpuctl
+    chmod 0660 /dev/cpuctl
     chown system system /dev/cpuctl/tasks
-    chmod 0666 /dev/cpuctl/tasks
+    chmod 0660 /dev/cpuctl/tasks
     write /dev/cpuctl/cpu.shares 1024
-    write /dev/cpuctl/cpu.rt_runtime_us 800000
+    write /dev/cpuctl/cpu.rt_runtime_us 950000
     write /dev/cpuctl/cpu.rt_period_us 1000000
 
-    mkdir /dev/cpuctl/bg_non_interactive
-    chown system system /dev/cpuctl/bg_non_interactive/tasks
-    chmod 0666 /dev/cpuctl/bg_non_interactive/tasks
+    mkdir /dev/cpuctl/apps
+    chown system system /dev/cpuctl/apps/tasks
+    chmod 0666 /dev/cpuctl/apps/tasks
+    write /dev/cpuctl/apps/cpu.shares 1024
+    write /dev/cpuctl/apps/cpu.rt_runtime_us 800000
+    write /dev/cpuctl/apps/cpu.rt_period_us 1000000
+
+    mkdir /dev/cpuctl/apps/bg_non_interactive
+    chown system system /dev/cpuctl/apps/bg_non_interactive/tasks
+    chmod 0666 /dev/cpuctl/apps/bg_non_interactive/tasks
     # 5.0 %
-    write /dev/cpuctl/bg_non_interactive/cpu.shares 52
-    write /dev/cpuctl/bg_non_interactive/cpu.rt_runtime_us 700000
-    write /dev/cpuctl/bg_non_interactive/cpu.rt_period_us 1000000
+    write /dev/cpuctl/apps/bg_non_interactive/cpu.shares 52
+    write /dev/cpuctl/apps/bg_non_interactive/cpu.rt_runtime_us 700000
+    write /dev/cpuctl/apps/bg_non_interactive/cpu.rt_period_us 1000000
 
     # sets up initial cpusets for ActivityManager
     mkdir /dev/cpuset
@@ -483,8 +491,11 @@ on boot
     chown system system /sys/class/leds/button-backlight/brightness
     chown system system /sys/class/leds/jogball-backlight/brightness
     chown system system /sys/class/leds/red/brightness
+    chown system system /sys/class/leds/red/blink
     chown system system /sys/class/leds/green/brightness
+    chown system system /sys/class/leds/green/blink
     chown system system /sys/class/leds/blue/brightness
+    chown system system /sys/class/leds/blue/blink
     chown system system /sys/class/leds/red/device/grpfreq
     chown system system /sys/class/leds/red/device/grppwm
     chown system system /sys/class/leds/red/device/blink
@@ -535,6 +546,7 @@ on property:vold.decrypt=trigger_restart_min_framework
     class_start main
 
 on property:vold.decrypt=trigger_restart_framework
+    restart bootanim
     class_start main
     class_start late_start
 
@@ -650,12 +662,14 @@ service ril-daemon /system/bin/rild
     socket sap_uim_socket1 stream 660 bluetooth bluetooth
     socket rild-debug stream 660 radio system
     user root
-    group radio cache inet misc audio log
+    group radio cache inet misc audio log qcom_diag
 
 service surfaceflinger /system/bin/surfaceflinger
     class core
     user system
     group graphics drmrpc
+    # allow the minimum realtime scheduler priority: RLIMIT_RTPRIO(14)=1
+    rlimit 14 1 1
     onrestart restart zygote
 
 service drm /system/bin/drmserver
@@ -666,7 +680,7 @@ service drm /system/bin/drmserver
 service media /system/bin/mediaserver
     class main
     user media
-    group audio camera inet net_bt net_bt_admin net_bw_acct drmrpc mediadrm
+    group audio camera inet net_bt net_bt_admin net_bw_acct drmrpc mediadrm qcom_diag
     ioprio rt 4
 
 # One shot invocation to deal with encrypted volume.
@@ -698,9 +712,9 @@ service installd /system/bin/installd
     class main
     socket installd stream 600 system system
 
-service flash_recovery /system/bin/install-recovery.sh
-    class main
-    oneshot
+#service flash_recovery /system/bin/install-recovery.sh
+#    class main
+#    oneshot
 
 service racoon /system/bin/racoon
     class main

@@ -45,6 +45,8 @@ static inline SchedPolicy _policy(SchedPolicy p)
 
 #define POLICY_DEBUG 0
 
+#define CAN_SET_SP_SYSTEM 0 // non-zero means to implement set_sched_policy(tid, SP_SYSTEM)
+
 // This prctl is only available in Android kernels.
 #define PR_SET_TIMERSLACK_PID 41
 
@@ -59,6 +61,9 @@ static int __sys_supports_schedgroups = -1;
 // File descriptors open to /dev/cpuctl/../tasks, setup by initialize, or -1 on error.
 static int bg_cgroup_fd = -1;
 static int fg_cgroup_fd = -1;
+#if CAN_SET_SP_SYSTEM
+static int system_cgroup_fd = -1;
+#endif
 
 // File descriptors open to /dev/cpuset/../tasks, setup by initialize, or -1 on error
 static int system_bg_cpuset_fd = -1;
@@ -102,16 +107,24 @@ static int add_tid_to_cgroup(int tid, int fd)
 
 static void __initialize(void) {
     char* filename;
-    if (!access("/dev/cpuctl/tasks", F_OK)) {
+    if (!access("/dev/cpuctl/apps/tasks", F_OK)) {
         __sys_supports_schedgroups = 1;
 
-        filename = "/dev/cpuctl/tasks";
+#if CAN_SET_SP_SYSTEM
+        filename = "/dev/cpuctl/apps/tasks";
+        system_cgroup_fd = open(filename, O_WRONLY | O_CLOEXEC);
+        if (system_cgroup_fd < 0) {
+            SLOGV("open of %s failed: %s\n", filename, strerror(errno));
+        }
+#endif
+
+        filename = "/dev/cpuctl/apps/tasks";
         fg_cgroup_fd = open(filename, O_WRONLY | O_CLOEXEC);
         if (fg_cgroup_fd < 0) {
             SLOGE("open of %s failed: %s\n", filename, strerror(errno));
         }
 
-        filename = "/dev/cpuctl/bg_non_interactive/tasks";
+        filename = "/dev/cpuctl/apps/bg_non_interactive/tasks";
         bg_cgroup_fd = open(filename, O_WRONLY | O_CLOEXEC);
         if (bg_cgroup_fd < 0) {
             SLOGE("open of %s failed: %s\n", filename, strerror(errno));
@@ -218,9 +231,11 @@ int get_sched_policy(int tid, SchedPolicy *policy)
         if (getSchedulerGroup(tid, grpBuf, sizeof(grpBuf)) < 0)
             return -1;
         if (grpBuf[0] == '\0') {
-            *policy = SP_FOREGROUND;
+            *policy = SP_SYSTEM;
         } else if (!strcmp(grpBuf, "bg_non_interactive")) {
             *policy = SP_BACKGROUND;
+        } else if (!strcmp(grpBuf, "apps")) {
+            *policy = SP_FOREGROUND;
         } else {
             errno = ERANGE;
             return -1;
@@ -233,6 +248,10 @@ int get_sched_policy(int tid, SchedPolicy *policy)
             *policy = SP_FOREGROUND;
         else if (rc == SCHED_BATCH)
             *policy = SP_BACKGROUND;
+/* BEGIN Motorola, rknize2, 05/10/2013, IKJBXLINE-9555 */
+        else if (rc == SCHED_RR)
+            *policy = SP_REALTIME;
+/* END Motorola, IKJBXLINE-9555 */
         else {
             errno = ERANGE;
             return -1;
@@ -323,13 +342,22 @@ int set_sched_policy(int tid, SchedPolicy policy)
     case SP_SYSTEM:
         SLOGD("/// tid %d (%s)", tid, thread_name);
         break;
+/* BEGIN Motorola, rknize2, 05/10/2013, IKJBXLINE-9555 */
+    case SP_REALTIME:
+        SLOGD("!!! tid %d (%s)", tid, thread_name);
+        break;
+/* END Motorola, IKJBXLINE-9555 */
     default:
         SLOGD("??? tid %d (%s)", tid, thread_name);
         break;
     }
 #endif
 
-    if (__sys_supports_schedgroups) {
+/* BEGIN Motorola, rknize2, 05/10/2013, IKJBXLINE-9555
+ * Schedule groups are not supported for RT processes. */
+    if (__sys_supports_schedgroups &&
+        policy != SP_REALTIME) {
+/* END Motorola, IKJBXLINE-9555 */
         int fd;
         switch (policy) {
         case SP_BACKGROUND:
@@ -352,12 +380,21 @@ int set_sched_policy(int tid, SchedPolicy policy)
         }
     } else {
         struct sched_param param;
+/* BEGIN Motorola, rknize2, 05/10/2013, IKJBXLINE-9555
+ * Allow the RT policy at the lowest priority. */
+        int posix_policy = SCHED_NORMAL;
 
-        param.sched_priority = 0;
-        sched_setscheduler(tid,
-                           (policy == SP_BACKGROUND) ?
-                           SCHED_BATCH : SCHED_NORMAL,
-                           &param);
+        param.sched_priority = 0; /* unused for non-RT policies */
+        if (policy == SP_BACKGROUND) {
+            posix_policy = SCHED_BATCH;
+        } else if (policy == SP_REALTIME) {
+            posix_policy = SCHED_RR;
+            param.sched_priority = 1; /* lowest RT priority */
+        }
+
+        if (sched_setscheduler(tid, posix_policy, &param) < 0)
+            SLOGE("sched_setscheduler failed: tid %d, errno=%d", tid, errno);
+/* END Motorola, IKJBXLINE-9555 */
     }
 
     prctl(PR_SET_TIMERSLACK_PID,
@@ -392,6 +429,7 @@ const char *get_sched_policy_name(SchedPolicy policy)
        [SP_SYSTEM]     = "  ",
        [SP_AUDIO_APP]  = "aa",
        [SP_AUDIO_SYS]  = "as",
+       [SP_REALTIME]   = "rt", /* Motorola, w04904, 05/10/2013, IKJBXLINE-9555 */
     };
     if ((policy < SP_CNT) && (strings[policy] != NULL))
         return strings[policy];

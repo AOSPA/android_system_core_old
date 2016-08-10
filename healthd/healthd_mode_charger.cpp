@@ -75,6 +75,7 @@ char *locale;
 
 #define LOGE(x...) do { KLOG_ERROR("charger", x); } while (0)
 #define LOGW(x...) do { KLOG_WARNING("charger", x); } while (0)
+#define LOGI(x...) do { KLOG_INFO("charger", x); } while (0)
 #define LOGV(x...) do { KLOG_DEBUG("charger", x); } while (0)
 
 struct key_state {
@@ -715,6 +716,7 @@ void healthd_mode_charger_init(struct healthd_config* config)
 
     charger->batt_anim = &battery_animation;
 
+#ifndef CHARGER_FASHION
     GRSurface** scale_frames;
     int scale_count;
     ret = res_create_multi_display_surface("charger/battery_scale", &scale_count, &scale_frames);
@@ -732,6 +734,7 @@ void healthd_mode_charger_init(struct healthd_config* config)
             charger->batt_anim->frames[i].surface = scale_frames[i];
         }
     }
+#endif
 
     ev_sync_key_state(set_key_callback, charger);
 

@@ -49,6 +49,22 @@ LOCAL_POST_INSTALL_CMD := $(hide) mkdir -p $(TARGET_ROOT_OUT) \
 
 include $(BUILD_EXECUTABLE)
 
+ifeq ($(strip $(BOARD_CHARGER_FASHION)),true)
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := healthd_board_fashion.cpp
+LOCAL_MODULE := libhealthd.fashion
+LOCAL_CFLAGS := -Werror
+LOCAL_C_INCLUDES := bootable/recovery
+include $(BUILD_STATIC_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := font_log.png
+LOCAL_SRC_FILES := fonts/$(PRODUCT_AAPT_PREF_CONFIG)/font_log.png
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := ETC
+LOCAL_MODULE_PATH := $(TARGET_ROOT_OUT)/res/images
+include $(BUILD_PREBUILT)
+endif
 
 define _add-charger-image
 include $$(CLEAR_VARS)
@@ -64,7 +80,11 @@ endef
 
 _img_modules :=
 ifeq ($(strip $(BOARD_HEALTHD_CUSTOM_CHARGER_RES)),)
-IMAGES_DIR := images
+ifeq ($(strip $(BOARD_CHARGER_FASHION)),true)
+IMAGES_DIR := images/$(PRODUCT_AAPT_PREF_CONFIG)
+else
+IMAGES_DIR := images/legacy
+endif
 else
 IMAGES_DIR := ../../../$(BOARD_HEALTHD_CUSTOM_CHARGER_RES)
 endif

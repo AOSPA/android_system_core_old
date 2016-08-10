@@ -8,6 +8,22 @@ LOCAL_MODULE := libhealthd.default
 LOCAL_CFLAGS := -Werror
 include $(BUILD_STATIC_LIBRARY)
 
+ifeq ($(strip $(BOARD_CHARGER_FASHION)),true)
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := healthd_board_fashion.cpp
+LOCAL_MODULE := libhealthd.fashion
+LOCAL_CFLAGS := -Werror
+include $(BUILD_STATIC_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := font_log.png
+LOCAL_SRC_FILES := fonts/$(PRODUCT_AAPT_PREF_CONFIG)/font_log.png
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := ETC
+LOCAL_MODULE_PATH := $(TARGET_ROOT_OUT)/res/images
+include $(BUILD_PREBUILT)
+endif
+
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := \
@@ -41,6 +57,10 @@ ifeq ($(strip $(BOARD_CHARGER_ENABLE_SUSPEND)),true)
 LOCAL_STATIC_LIBRARIES += libsuspend
 endif
 
+ifeq ($(strip $(BOARD_CHARGER_FASHION)),true)
+LOCAL_CFLAGS += -DCHARGER_FASHION
+endif
+
 LOCAL_HAL_STATIC_LIBRARIES := libhealthd
 
 # Symlink /charger to /sbin/healthd
@@ -48,7 +68,6 @@ LOCAL_POST_INSTALL_CMD := $(hide) mkdir -p $(TARGET_ROOT_OUT) \
     && ln -sf /sbin/healthd $(TARGET_ROOT_OUT)/charger
 
 include $(BUILD_EXECUTABLE)
-
 
 define _add-charger-image
 include $$(CLEAR_VARS)
@@ -64,7 +83,11 @@ endef
 
 _img_modules :=
 ifeq ($(strip $(BOARD_HEALTHD_CUSTOM_CHARGER_RES)),)
-IMAGES_DIR := images
+ifeq ($(strip $(BOARD_CHARGER_FASHION)),true)
+IMAGES_DIR := images/$(PRODUCT_AAPT_PREF_CONFIG)
+else
+IMAGES_DIR := images/legacy
+endif
 else
 IMAGES_DIR := ../../../$(BOARD_HEALTHD_CUSTOM_CHARGER_RES)
 endif

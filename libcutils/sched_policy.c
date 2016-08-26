@@ -111,7 +111,7 @@ static int add_tid_to_cgroup(int tid, int fd)
 
 static void __initialize(void) {
     char* filename;
-    if (!access("/dev/cpuctl/tasks", F_OK)) {
+    if (!access("/dev/cpuctl/tasks", W_OK)) {
         __sys_supports_schedgroups = 1;
 
         filename = "/dev/cpuctl/tasks";
@@ -130,7 +130,7 @@ static void __initialize(void) {
     }
 
 #ifdef USE_CPUSETS
-    if (!access("/dev/cpuset/tasks", F_OK)) {
+    if (!access("/dev/cpuset/tasks", W_OK)) {
 
         filename = "/dev/cpuset/foreground/tasks";
         fg_cpuset_fd = open(filename, O_WRONLY | O_CLOEXEC);

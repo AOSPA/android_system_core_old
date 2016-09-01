@@ -244,7 +244,15 @@ void healthd_board_init(struct healthd_config*)
     if (!strcmp("charger", value)) {
         rc = pthread_create(&tid, NULL, alarm_thread, NULL);
         if (rc < 0)
-            LOGE("Create alarm thread failed\n");
+            LOGE("Charger alarm thread failed\n");
+    }
+    else if (!strcmp("chargerlogo", value)) {
+        rc = pthread_create(&tid, NULL, alarm_thread, NULL);
+        if (rc < 0)
+            LOGE("Chargerlogo alarm thread failed\n");
+    }
+    else {
+        LOGE("Could not detect boot mode\n");
     }
 }
 

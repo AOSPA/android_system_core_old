@@ -175,6 +175,19 @@ bool Service::HandleConsole(const std::vector<std::string>& args, std::string* e
     return true;
 }
 
+bool Service::HandleRlimit(const std::vector<std::string>& args, std::string* err) {
+	struct RlimitInfo *ri;
+	Service* svc = nullptr;
+        ri = (RlimitInfo*) calloc(1, sizeof(*ri));
+
+        ri->resource = stoi(args[1]);
+        ri->limit.rlim_cur = stoi(args[2]);
+        ri->limit.rlim_max = stoi(args[3]);
+        ri->next = svc->rlimits;
+        svc->rlimits = ri;
+    return true;
+}
+
 bool Service::HandleCritical(const std::vector<std::string>& args, std::string* err) {
     flags_ |= SVC_CRITICAL;
     return true;
@@ -284,6 +297,7 @@ Service::OptionHandlerMap::Map& Service::OptionHandlerMap::map() const {
         {"class",       {1,     1,    &Service::HandleClass}},
         {"console",     {0,     0,    &Service::HandleConsole}},
         {"critical",    {0,     0,    &Service::HandleCritical}},
+        {"rlimit",      {3,     0,    &Service::HandleRlimit}},
         {"disabled",    {0,     0,    &Service::HandleDisabled}},
         {"group",       {1,     NR_SVC_SUPP_GIDS + 1, &Service::HandleGroup}},
         {"ioprio",      {2,     2,    &Service::HandleIoprio}},

@@ -18,6 +18,7 @@
 #define _INIT_SERVICE_H
 
 #include <sys/types.h>
+#include <sys/resource.h>
 
 #include <cutils/iosched_policy.h>
 
@@ -64,6 +65,12 @@ struct ServiceEnvironmentInfo {
     ServiceEnvironmentInfo(const std::string& name, const std::string& value);
     std::string name;
     std::string value;
+};
+
+struct RlimitInfo {
+    struct RlimitInfo *next;
+    int resource;
+    struct rlimit limit;
 };
 
 class Service {
@@ -114,6 +121,7 @@ private:
     bool HandleClass(const std::vector<std::string>& args, std::string* err);
     bool HandleConsole(const std::vector<std::string>& args, std::string* err);
     bool HandleCritical(const std::vector<std::string>& args, std::string* err);
+    bool HandleRlimit(const std::vector<std::string>& args, std::string* err);
     bool HandleDisabled(const std::vector<std::string>& args, std::string* err);
     bool HandleGroup(const std::vector<std::string>& args, std::string* err);
     bool HandleIoprio(const std::vector<std::string>& args, std::string* err);
@@ -154,6 +162,8 @@ private:
 
     IoSchedClass ioprio_class_;
     int ioprio_pri_;
+
+    struct RlimitInfo *rlimits;
 
     std::vector<std::string> args_;
 };

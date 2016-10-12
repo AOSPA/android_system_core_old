@@ -26,6 +26,7 @@
 #include <selinux/selinux.h>
 
 #include <android-base/file.h>
+#include <android-base/parseint.h>
 #include <android-base/stringprintf.h>
 #include <cutils/android_reboot.h>
 #include <cutils/sockets.h>
@@ -37,6 +38,7 @@
 #include "property_service.h"
 #include "util.h"
 
+using android::base::ParseInt;
 using android::base::StringPrintf;
 using android::base::WriteStringToFile;
 
@@ -208,9 +210,7 @@ bool Service::HandleGroup(const std::vector<std::string>& args, std::string* err
 }
 
 bool Service::HandleIoprio(const std::vector<std::string>& args, std::string* err) {
-    ioprio_pri_ = std::stoul(args[2], 0, 8);
-
-    if (ioprio_pri_ < 0 || ioprio_pri_ > 7) {
+    if (!ParseInt(args[2], &ioprio_pri_, 0, 7)) {
         *err = "priority value must be range 0 - 7";
         return false;
     }
@@ -231,7 +231,10 @@ bool Service::HandleIoprio(const std::vector<std::string>& args, std::string* er
 
 bool Service::HandleKeycodes(const std::vector<std::string>& args, std::string* err) {
     for (std::size_t i = 1; i < args.size(); i++) {
-        keycodes_.emplace_back(std::stoi(args[i]));
+        int code;
+        if (ParseInt(args[i], &code)) {
+            keycodes_.emplace_back(code);
+        }
     }
     return true;
 }

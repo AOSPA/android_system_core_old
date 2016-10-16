@@ -550,6 +550,12 @@ static int do_mount_all(const std::vector<std::string>& args) {
     /* Paths of .rc files are specified at the 2nd argument and beyond */
     import_late(args, 2);
 
+    std::string bootmode = property_get("ro.bootmode");
+    if (strncmp(bootmode.c_str(), "ffbm", 4) == 0) {
+        NOTICE("ffbm mode, not start class main\n");
+        return 0;
+    }
+
     if (ret == FS_MGR_MNTALL_DEV_NEEDS_ENCRYPTION) {
         ActionManager::GetInstance().QueueEventTrigger("encrypt");
     } else if (ret == FS_MGR_MNTALL_DEV_MIGHT_BE_ENCRYPTED) {
@@ -827,8 +833,8 @@ static int do_write(const std::vector<std::string>& args) {
             break;
         } else {
             //Value at current index is -p. The next index would
-            //be the prefix.Skip beyond that.
-            i+=2;
+            //be the prefix.Skip it.
+            i++;
         }
     }
     if (!path || !value) {

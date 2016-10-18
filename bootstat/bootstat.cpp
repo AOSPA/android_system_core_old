@@ -147,7 +147,7 @@ std::string CalculateBootCompletePrefix() {
   std::string boot_complete_prefix = "boot_complete";
 
   std::string build_date_str = GetProperty("ro.build.date.utc");
-  int32_t build_date = std::stoi(build_date_str);
+  int build_date = std::stoi(build_date_str);
 
   BootEventRecordStore boot_event_store;
   BootEventRecordStore::BootEventRecord record;

@@ -87,7 +87,7 @@ struct thread_data_t {
         delete t;
         setpriority(PRIO_PROCESS, 0, prio);
 // BEGIN Motorola, IKJBXLINE-9555, rknize2, 05/10/2013
-#ifdef HAVE_ANDROID_OS
+#if defined(__ANDROID__)
         if (prio == ANDROID_PRIORITY_REALTIME) {
             set_sched_policy(gettid(), SP_REALTIME);
         } else

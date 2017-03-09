@@ -332,6 +332,7 @@ typedef struct camera_face {
     int32_t top_bottom_gaze;
     int32_t leye_blink;
     int32_t reye_blink;
+    int32_t is_smile;
 
 } camera_face_t;
 

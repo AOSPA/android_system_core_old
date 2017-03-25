@@ -32,7 +32,7 @@
 #include <sys/wait.h>
 #include <sys/un.h>
 #include <time.h>
-
+#include <sys/resource.h>
 #include <memory>
 #include <set>
 #include <string>
@@ -73,6 +73,10 @@ struct debugger_request_t {
   uintptr_t abort_msg_address;
   int32_t original_si_code;
 };
+
+bool force_coredump_generation;
+bool coredump_enabled;
+int coredump_signal;
 
 static void wait_for_user_action(const debugger_request_t& request) {
   // Explain how to attach the debugger.
@@ -526,6 +530,7 @@ static bool perform_dump(const debugger_request_t& request, int fd, int tombston
       case SIGTRAP:
         ALOGV("stopped -- fatal signal\n");
         *crash_signal = signal;
+        coredump_signal = signal;
         engrave_tombstone(tombstone_fd, backtrace_map, request.pid, request.tid, siblings, signal,
                           request.original_si_code, request.abort_msg_address, amfd_data);
         break;
@@ -652,14 +657,15 @@ static void worker_process(int fd, debugger_request_t& request) {
   }
 
   bool succeeded = false;
+  force_coredump_generation = false;
 
-  // Now that we've done everything that requires privileges, we can drop them.
-  if (!drop_privileges()) {
-    ALOGE("debuggerd: failed to drop privileges, exiting");
-    _exit(1);
-  }
+  char value1[PROPERTY_VALUE_MAX], value2[PROPERTY_VALUE_MAX];
+  property_get("ro.debuggable", value1, "0");
+  property_get("persist.coredump.disable", value2, "0");
+  coredump_enabled = ((value1[0] == '1') && (value2[0] == '0'));
 
   int crash_signal = SIGKILL;
+  coredump_signal = SIGKILL;
   succeeded = perform_dump(request, fd, tombstone_fd, backtrace_map.get(), siblings,
                            &crash_signal, amfd_data.get());
   if (succeeded) {
@@ -668,6 +674,22 @@ static void worker_process(int fd, debugger_request_t& request) {
         android::base::WriteFully(fd, tombstone_path.c_str(), tombstone_path.length());
       }
     }
+  }
+
+  if (coredump_enabled && force_coredump_generation) {
+    struct rlimit r1;
+    r1.rlim_cur = RLIM_INFINITY;
+    r1.rlim_max = RLIM_INFINITY;
+    ALOGE("debuggerd: setting resource-limit for crashing process to dump core");
+    if (prlimit(request.pid, RLIMIT_CORE, &r1, NULL) == -1) {
+      ALOGE("debuggerd: Failed to set RLIMIT_CORE for pid; %d", request.pid);
+    }
+  }
+
+  // Now that we've done everything that requires privileges, we can drop them.
+  if (!drop_privileges()) {
+    ALOGE("debuggerd: failed to drop privileges, exiting");
+    _exit(1);
   }
 
   if (attach_gdb) {

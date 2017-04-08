@@ -70,6 +70,8 @@ static int persistent_properties_loaded = 0;
 
 static int property_set_fd = -1;
 
+static bool weaken_prop_override_security = false;
+
 void property_init() {
     if (__system_property_area_init()) {
         LOG(ERROR) << "Failed to initialize property area";
@@ -185,7 +187,7 @@ static uint32_t PropertySetImpl(const std::string& name, const std::string& valu
     prop_info* pi = (prop_info*) __system_property_find(name.c_str());
     if (pi != nullptr) {
         // ro.* properties are actually "write-once".
-        if (android::base::StartsWith(name, "ro.")) {
+        if (android::base::StartsWith(name, "ro.") && !weaken_prop_override_security) {
             LOG(ERROR) << "property_set(\"" << name << "\", \"" << value << "\") failed: "
                        << "property already set";
             return PROP_ERROR_READ_ONLY_PROPERTY;
@@ -740,10 +742,16 @@ void load_system_props() {
     load_properties_from_file("/vendor/build.prop", NULL);
     load_properties_from_file("/factory/factory.prop", "ro.*");
 
+    /* Weaken property override security during execution of the vendor init extension. */
+    weaken_prop_override_security = true;
+
     /* update with vendor-specific property runtime
      * overrides
      */
     vendor_load_properties();
+
+    /* Restore the normal property override security after vendor init extension is executed. */
+    weaken_prop_override_security = false;
 
     load_recovery_id_prop();
 }

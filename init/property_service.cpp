@@ -64,6 +64,8 @@ static int persistent_properties_loaded = 0;
 
 static int property_set_fd = -1;
 
+static bool weaken_prop_override_security = false;
+
 void property_init() {
     if (__system_property_area_init()) {
         ERROR("Failed to initialize property area\n");
@@ -189,8 +191,8 @@ static int property_set_impl(const char* name, const char* value) {
     prop_info* pi = (prop_info*) __system_property_find(name);
 
     if(pi != 0) {
-        /* ro.* properties may NEVER be modified once set */
-        if(!strncmp(name, "ro.", 3)) return -1;
+        /* ro.* properties may NEVER be modified once set, unless the system decides to. */
+        if(!strncmp(name, "ro.", 3) && !weaken_prop_override_security) return -1;
 
         __system_property_update(pi, value, valuelen);
     } else {
@@ -528,10 +530,16 @@ void load_system_props() {
     /* Read persistent properties after all default values have been loaded. */
     load_persistent_properties();
 
+    /* Weaken property override security during execution of the vendor init extension. */
+    weaken_prop_override_security = true;
+
     /* update with vendor-specific property runtime
      * overrides
      */
     vendor_load_properties();
+
+    /* Restore the normal property override security after init extension is executed. */
+    weaken_prop_override_security = false;
 
     load_recovery_id_prop();
 }

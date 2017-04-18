@@ -56,6 +56,10 @@
 #define TOMBSTONE_DIR   "/data/tombstones"
 #define TOMBSTONE_TEMPLATE (TOMBSTONE_DIR"/tombstone_%02d")
 
+// victim_thread will be true only while dumping logs for
+// the thread that actually crashed.
+bool victim_thread = false;
+
 static bool signal_has_si_addr(int sig) {
   switch (sig) {
     case SIGBUS:
@@ -198,6 +202,22 @@ static void dump_signal_info(log_t* log, pid_t tid, int signal, int si_code) {
        signal, get_signame(signal), si.si_code, get_sigcode(signal, si.si_code), addr_desc);
 }
 
+bool is_heaptaskdaemon(char* threadname) {
+  char c[20] = "heaptaskdaemon";
+  char *target = c;
+
+  if (strlen(threadname) != strlen(target))
+    return false;
+
+  for ( ; *threadname && *target; threadname++, target++) {
+    if (tolower(*threadname) != tolower(*target)) {
+      return false;
+    }
+  }
+  ALOGI("coredump_criteria: victim-threadname is HeapTaskDaemon");
+  return true;
+}
+
 static void dump_thread_info(log_t* log, pid_t pid, pid_t tid) {
   char path[64];
   char threadnamebuf[1024];
@@ -233,6 +253,13 @@ static void dump_thread_info(log_t* log, pid_t pid, pid_t tid) {
 
   _LOG(log, logtype::HEADER, "pid: %d, tid: %d, name: %s  >>> %s <<<\n", pid, tid,
        threadname ? threadname : "UNKNOWN", procname ? procname : "UNKNOWN");
+
+  // If the thread that crashed is HeapTaskDaemon,
+  // we are in the process of garbage-collection.
+  // Force core-dump generation.
+  if (coredump_enabled && victim_thread && threadname && is_heaptaskdaemon(threadname)) {
+    force_coredump_generation = true;
+  }
 }
 
 static void dump_stack_segment(
@@ -448,6 +475,7 @@ static void dump_backtrace_and_stack(Backtrace* backtrace, log_t* log) {
 static void dump_thread(log_t* log, pid_t pid, pid_t tid, BacktraceMap* map, int signal,
                         int si_code, uintptr_t abort_msg_address, bool primary_thread) {
   log->current_tid = tid;
+  victim_thread = primary_thread;
   if (!primary_thread) {
     _LOG(log, logtype::THREAD, "--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---\n");
   }

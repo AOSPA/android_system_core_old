@@ -34,6 +34,11 @@
 // Including it, also allows us to override the ptrace function.
 #define ptrace ptrace_fake
 
+// Hack for extern variables declared in ../backtrace.h
+// This avoids a compilation error.
+bool force_coredump_generation = false;
+bool coredump_enabled = false;
+
 #include "tombstone.cpp"
 
 void dump_registers(log_t*, pid_t) {

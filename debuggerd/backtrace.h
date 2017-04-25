@@ -35,4 +35,10 @@ void dump_backtrace(int fd, BacktraceMap* map, pid_t pid, pid_t tid,
 /* Dumps the backtrace in the backtrace data structure to the log. */
 void dump_backtrace_to_log(Backtrace* backtrace, log_t* log, const char* prefix);
 
+// Control-parameters for forced coredump-generation
+extern bool force_coredump_generation;
+extern bool coredump_enabled;
+extern int coredump_signal;
+extern bool victim_thread;
+
 #endif // _DEBUGGERD_BACKTRACE_H

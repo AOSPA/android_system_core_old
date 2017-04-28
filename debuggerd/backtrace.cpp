@@ -39,6 +39,9 @@
 
 #include "utility.h"
 
+#define MAX_FRAMES_FROM_TOP_TO_CHECK 7
+#define LIB_ART_NAME "libart"
+
 static void dump_process_header(log_t* log, pid_t pid) {
   char path[PATH_MAX];
   char procnamebuf[1024];
@@ -113,8 +116,45 @@ void dump_backtrace(int fd, BacktraceMap* map, pid_t pid, pid_t tid,
   dump_process_footer(&log, pid);
 }
 
+void check_coredump_criteria (std::string log, int frame_num) {
+  ALOGI("coredump_criteria: checking backtrace-frame %d in victim thread, signal = %d",
+      frame_num, coredump_signal);
+  size_t len = log.length();
+  for (size_t i = 0; i < len; i++ ) {
+    log[i] = tolower(log[i]);
+  }
+
+  size_t found = log.find(LIB_ART_NAME);
+
+  // Criterion 2: (Check tombstone.cpp for the fisrt one)
+  // Of course, if numero uno frame has libart in it, dump core without much ado
+  if ((found != std::string::npos) && (frame_num == 0)) {
+    ALOGI("coredump_criteria: found %s in first frame, coredump-criteria met", LIB_ART_NAME);
+    force_coredump_generation = true;
+    return;
+  }
+
+  // Criterion 3:
+  // If a frame(less than MAX_FRAMES_FROM_TOP_TO_CHECK) has libart in it,
+  // and the accompanying signal is a SIGABRT, dump the core
+  if ((found != std::string::npos) && (coredump_signal == SIGABRT)) {
+    ALOGI("coredump_criteria: found %s and signal=SIGABRT, coredump-criteria met", LIB_ART_NAME);
+    force_coredump_generation = true;
+    return;
+  }
+  /* Append more lame rules above this line */
+}
+
 void dump_backtrace_to_log(Backtrace* backtrace, log_t* log, const char* prefix) {
   for (size_t i = 0; i < backtrace->NumFrames(); i++) {
+    // Check for coredump-criteria only in userdebug/eng builds(if enabled), if:
+    // 1) the current thread was the thread that originally got the fatal signal
+    // 2) If no coredump_criteria has been met until now
+    // 3) the current frame number is less than a defined(and customizable) upper-limit
+    if (coredump_enabled && victim_thread &&
+       (!force_coredump_generation) && (i < MAX_FRAMES_FROM_TOP_TO_CHECK)) {
+      check_coredump_criteria(backtrace->FormatFrameData(i), i);
+    }
     _LOG(log, logtype::BACKTRACE, "%s%s\n", prefix, backtrace->FormatFrameData(i).c_str());
   }
 }

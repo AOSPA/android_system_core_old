@@ -661,7 +661,7 @@ static void worker_process(int fd, debugger_request_t& request) {
 
   char value1[PROPERTY_VALUE_MAX], value2[PROPERTY_VALUE_MAX];
   property_get("ro.debuggable", value1, "0");
-  property_get("persist.coredump.disable", value2, "0");
+  property_get("persist.coredump.disable", value2, "1");
   coredump_enabled = ((value1[0] == '1') && (value2[0] == '0'));
 
   int crash_signal = SIGKILL;

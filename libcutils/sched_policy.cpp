@@ -59,6 +59,7 @@ static int system_bg_cpuset_fd = -1;
 static int bg_cpuset_fd = -1;
 static int fg_cpuset_fd = -1;
 static int ta_cpuset_fd = -1; // special cpuset for top app
+static int system_bg_schedboost_fd = -1;
 
 // File descriptors open to /dev/stune/../tasks, setup by initialize, or -1 on error
 static int bg_schedboost_fd = -1;
@@ -310,6 +311,7 @@ int set_cpuset_policy(int tid, SchedPolicy policy)
         break;
     case SP_SYSTEM:
         fd = system_bg_cpuset_fd;
+        boost_fd = system_bg_schedboost_fd;
         break;
     default:
         boost_fd = fd = -1;

@@ -77,9 +77,180 @@ static void initBatteryProperties(BatteryProperties* props) {
     props->batteryTechnology.clear();
 }
 
+static void initBroadcastProperties(void) {
+    property_set("sys.healthd.charger_ac_online", "false");
+    property_set("sys.healthd.charger_usb_online", "false");
+    property_set("sys.healthd.charger_wireless_online", "false");
+    property_set("sys.healthd.max_charging_current", "0");
+    property_set("sys.healthd.max_charging_voltage", "0");
+    property_set("sys.healthd.battery_status", "unknown");
+    property_set("sys.healthd.battery_health", "unknown");
+    property_set("sys.healthd.battery_present", "0");
+    property_set("sys.healthd.battery_level", "0");
+    property_set("sys.healthd.battery_voltage", "0");
+    property_set("sys.healthd.battery_temperature", "0");
+    property_set("sys.healthd.battery_current", "0");
+    property_set("sys.healthd.battery_cycle_count", "0");
+    property_set("sys.healthd.battery_full_charge", "0");
+    property_set("sys.healthd.battery_charge_counter", "0");
+}
+
+// int to string
+static inline char* propToString(const int val, char* ret) {
+    sprintf(ret, "%d", val);
+
+    return ret;
+}
+
+// bool to string
+static inline const char* propToString(const bool val) {
+    if (val)
+        return "true";
+    else
+        return "false";
+}
+
+// batteryStatus to string
+// must be kept in sync with BatteryService.h
+static inline const char* statusToString(const int val) {
+    switch (val) {
+    case 2:
+        return "charging";
+    case 3:
+        return "discharging";
+    case 4:
+        return "not charging";
+    case 5:
+        return "full";
+    case 1:
+    default:
+        return "unknown";
+    }
+}
+
+// batteryHealth to string
+// must be kept in sync with BatteryService.h
+static inline const char* healthToString(const int val) {
+    switch (val) {
+    case 2:
+        return "good";
+    case 3:
+        return "overheat";
+    case 4:
+        return "dead";
+    case 5:
+        return "over voltage";
+    case 6:
+        return "unspecified failure";
+    case 7:
+        return "cold";
+    case 1:
+    default:
+        return "unknown";
+    }
+}
+
+// Guard every properties with "if" to broadcast the changed ones only
+static void broadcastProperties(BatteryProperties* oldprops, const BatteryProperties props) {
+    char str[30];
+
+    if (oldprops->chargerAcOnline != props.chargerAcOnline) {
+        if (property_set("sys.healthd.charger_ac_online", propToString(props.chargerAcOnline)) < 0)
+            KLOG_ERROR(LOG_TAG, "Failed to set \"%s\" property\n", "sys.healthd.charger_ac_online");
+        else
+            oldprops->chargerAcOnline = props.chargerAcOnline;
+    }
+    if (oldprops->chargerUsbOnline != props.chargerUsbOnline) {
+        if (property_set("sys.healthd.charger_usb_online", propToString(props.chargerUsbOnline)) < 0)
+            KLOG_ERROR(LOG_TAG, "Failed to set \"%s\" property\n", "sys.healthd.charger_usb_online");
+        else
+            oldprops->chargerUsbOnline = props.chargerUsbOnline;
+    }
+    if (oldprops->chargerWirelessOnline != props.chargerWirelessOnline) {
+        if (property_set("sys.healthd.charger_wireless_online", propToString(props.chargerWirelessOnline)) < 0)
+            KLOG_ERROR(LOG_TAG, "Failed to set \"%s\" property\n", "sys.healthd.charger_wireless_online");
+        else
+            oldprops->chargerWirelessOnline = props.chargerWirelessOnline;
+    }
+    if (oldprops->maxChargingCurrent != props.maxChargingCurrent) {
+        if (property_set("sys.healthd.max_charging_current", propToString(props.maxChargingCurrent, str)) < 0)
+            KLOG_ERROR(LOG_TAG, "Failed to set \"%s\" property\n", "sys.healthd.max_charging_current");
+        else
+            oldprops->maxChargingCurrent = props.maxChargingCurrent;
+    }
+    if (oldprops->maxChargingVoltage != props.maxChargingVoltage) {
+        if (property_set("sys.healthd.max_charging_voltage", propToString(props.maxChargingVoltage, str)) < 0)
+            KLOG_ERROR(LOG_TAG, "Failed to set \"%s\" property\n", "sys.healthd.max_charging_voltage");
+        else
+            oldprops->maxChargingVoltage = props.maxChargingVoltage;
+    }
+    if (oldprops->batteryStatus != props.batteryStatus) {
+        if (property_set("sys.healthd.battery_status", statusToString(props.batteryStatus)) < 0)
+            KLOG_ERROR(LOG_TAG, "Failed to set \"%s\" property\n", "sys.healthd.battery_status");
+        else
+            oldprops->batteryStatus = props.batteryStatus;
+    }
+    if (oldprops->batteryHealth != props.batteryHealth) {
+        if (property_set("sys.healthd.battery_health", healthToString(props.batteryHealth)) < 0)
+            KLOG_ERROR(LOG_TAG, "Failed to set \"%s\" property\n", "sys.healthd.battery_health");
+        else
+            oldprops->batteryHealth = props.batteryHealth;
+    }
+    if (oldprops->batteryPresent != props.batteryPresent) {
+        if (property_set("sys.healthd.battery_present", propToString(props.batteryPresent, str)) < 0)
+            KLOG_ERROR(LOG_TAG, "Failed to set \"%s\" property\n", "sys.healthd.battery_present");
+        else
+            oldprops->batteryPresent = props.batteryPresent;
+    }
+    if (oldprops->batteryLevel != props.batteryLevel) {
+        if (property_set("sys.healthd.battery_level", propToString(props.batteryLevel, str)) < 0)
+            KLOG_ERROR(LOG_TAG, "Failed to set \"%s\" property\n", "sys.healthd.battery_level");
+        else
+            oldprops->batteryLevel = props.batteryLevel;
+    }
+    if (oldprops->batteryVoltage != props.batteryVoltage) {
+        if (property_set("sys.healthd.battery_voltage", propToString(props.batteryVoltage, str)) < 0)
+            KLOG_ERROR(LOG_TAG, "Failed to set \"%s\" property\n", "sys.healthd.battery_voltage");
+        else
+            oldprops->batteryVoltage = props.batteryVoltage;
+    }
+    if (oldprops->batteryTemperature != props.batteryTemperature) {
+        if (property_set("sys.healthd.battery_temperature", propToString(props.batteryTemperature, str)) < 0)
+            KLOG_ERROR(LOG_TAG, "Failed to set \"%s\" property\n", "sys.healthd.battery_temperature");
+        else
+            oldprops->batteryTemperature = props.batteryTemperature;
+    }
+    if (oldprops->batteryCurrent != props.batteryCurrent) {
+        if (property_set("sys.healthd.battery_current", propToString(props.batteryCurrent, str)) < 0)
+            KLOG_ERROR(LOG_TAG, "Failed to set \"%s\" property\n", "sys.healthd.battery_current");
+        else
+            oldprops->batteryCurrent = props.batteryCurrent;
+    }
+    if (oldprops->batteryCycleCount != props.batteryCycleCount) {
+        if (property_set("sys.healthd.battery_cycle_count", propToString(props.batteryCycleCount, str)) < 0)
+            KLOG_ERROR(LOG_TAG, "Failed to set \"%s\" property\n", "sys.healthd.battery_cycle_count");
+        else
+            oldprops->batteryCycleCount = props.batteryCycleCount;
+    }
+    if (oldprops->batteryFullCharge != props.batteryFullCharge) {
+        if (property_set("sys.healthd.battery_full_charge", propToString(props.batteryFullCharge, str)) < 0)
+            KLOG_ERROR(LOG_TAG, "Failed to set \"%s\" property\n", "sys.healthd.battery_full_charge");
+        else
+            oldprops->batteryFullCharge = props.batteryFullCharge;
+    }
+    if (oldprops->batteryChargeCounter != props.batteryChargeCounter) {
+        if (property_set("sys.healthd.battery_charge_counter", propToString(props.batteryChargeCounter, str)) < 0)
+            KLOG_ERROR(LOG_TAG, "Failed to set \"%s\" property\n", "sys.healthd.battery_charge_counter");
+        else
+            oldprops->batteryChargeCounter = props.batteryChargeCounter;
+    }
+}
+
 BatteryMonitor::BatteryMonitor() : mHealthdConfig(nullptr), mBatteryDevicePresent(false),
     mAlwaysPluggedDevice(false), mBatteryFixedCapacity(0), mBatteryFixedTemperature(0) {
     initBatteryProperties(&props);
+    initBatteryProperties(&oldprops);
+    initBroadcastProperties();
 }
 
 int BatteryMonitor::getBatteryStatus(const char* status) {
@@ -389,6 +560,9 @@ bool BatteryMonitor::update(void) {
 
         KLOG_WARNING(LOG_TAG, "%s\n", dmesgline);
     }
+
+    // Broadcast updated properties
+    broadcastProperties(&oldprops, props);
 
     healthd_mode_ops->battery_update(&props);
     return props.chargerAcOnline | props.chargerUsbOnline |

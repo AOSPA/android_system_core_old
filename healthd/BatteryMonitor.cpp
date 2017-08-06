@@ -77,9 +77,150 @@ static void initBatteryProperties(BatteryProperties* props) {
     props->batteryTechnology.clear();
 }
 
+static void initBroadcastProperties(void) {
+    property_set("healthd.charger_ac_online", "false");
+    property_set("healthd.charger_usb_online", "false");
+    property_set("healthd.charger_wireless_online", "false");
+    property_set("healthd.max_charging_current", "0");
+    property_set("healthd.max_charging_voltage", "0");
+    property_set("healthd.battery_status", "unknown");
+    property_set("healthd.battery_health", "unknown");
+    property_set("healthd.battery_present", "0");
+    property_set("healthd.battery_level", "0");
+    property_set("healthd.battery_voltage", "0");
+    property_set("healthd.battery_temperature", "0");
+    property_set("healthd.battery_current", "0");
+    property_set("healthd.battery_cycle_count", "0");
+    property_set("healthd.battery_full_charge", "0");
+    property_set("healthd.battery_charge_counter", "0");
+}
+
+// int to string
+static inline char* propToString(const int val, char* ret) {
+    sprintf(ret, "%d", val);
+
+    return ret;
+}
+
+// bool to string
+static inline const char* propToString(const bool val) {
+    if (val)
+        return "true";
+    else
+        return "false";
+}
+
+// batteryStatus to string
+// must be kept in sync with BatteryService.h
+static inline const char* statusToString(const int val) {
+    switch (val) {
+    case 2:
+        return "charging";
+    case 3:
+        return "discharging";
+    case 4:
+        return "not charging";
+    case 5:
+        return "full";
+    case 1:
+    default:
+        return "unknown";
+    }
+}
+
+// batteryHealth to string
+// must be kept in sync with BatteryService.h
+static inline const char* healthToString(const int val) {
+    switch (val) {
+    case 2:
+        return "good";
+    case 3:
+        return "overheat";
+    case 4:
+        return "dead";
+    case 5:
+        return "over voltage";
+    case 6:
+        return "unspecified failure";
+    case 7:
+        return "cold";
+    case 1:
+    default:
+        return "unknown";
+    }
+}
+
+// Guard every properties with "if" to broadcast the changed ones only
+static void broadcastProperties(BatteryProperties* oldprops, const BatteryProperties props) {
+    char str[6];
+
+    if (oldprops->chargerAcOnline != props.chargerAcOnline) {
+        property_set("healthd.charger_ac_online", propToString(props.chargerAcOnline, str));
+        oldprops->chargerAcOnline = props.chargerAcOnline;
+    }
+    if (oldprops->chargerUsbOnline != props.chargerUsbOnline) {
+        property_set("healthd.charger_usb_online", propToString(props.chargerUsbOnline, str));
+        oldprops->chargerUsbOnline = props.chargerUsbOnline;
+    }
+    if (oldprops->chargerWirelessOnline != props.chargerWirelessOnline) {
+        property_set("healthd.charger_wireless_online", propToString(props.chargerWirelessOnline, str));
+        oldprops->chargerWirelessOnline = props.chargerWirelessOnline;
+    }
+    if (oldprops->maxChargingCurrent != props.maxChargingCurrent) {
+        property_set("healthd.max_charging_current", propToString(props.maxChargingCurrent, str));
+        oldprops->maxChargingCurrent = props.maxChargingCurrent;
+    }
+    if (oldprops->maxChargingVoltage != props.maxChargingVoltage) {
+        property_set("healthd.max_charging_voltage", propToString(props.maxChargingVoltage, str));
+        oldprops->maxChargingVoltage = props.maxChargingVoltage;
+    }
+    if (oldprops->batteryStatus != props.batteryStatus) {
+        property_set("healthd.battery_status", statusToString(props.batteryStatus));
+        oldprops->batteryStatus = props.batteryStatus;
+    }
+    if (oldprops->batteryHealth != props.batteryHealth) {
+        property_set("healthd.battery_health", healthToString(props.batteryHealth));
+        oldprops->batteryHealth = props.batteryHealth;
+    }
+    if (oldprops->batteryPresent != props.batteryPresent) {
+        property_set("healthd.battery_present", propToString(props.batteryPresent, str));
+        oldprops->batteryPresent = props.batteryPresent;
+    }
+    if (oldprops->batteryLevel != props.batteryLevel) {
+        property_set("healthd.battery_level", propToString(props.batteryLevel, str));
+        oldprops->batteryLevel = props.batteryLevel;
+    }
+    if (oldprops->batteryVoltage != props.batteryVoltage) {
+        property_set("healthd.battery_voltage", propToString(props.batteryVoltage, str));
+        oldprops->batteryVoltage = props.batteryVoltage;
+    }
+    if (oldprops->batteryTemperature != props.batteryTemperature) {
+        property_set("healthd.battery_temperature", propToString(props.batteryTemperature, str));
+        oldprops->batteryTemperature = props.batteryTemperature;
+    }
+    if (oldprops->batteryCurrent != props.batteryCurrent) {
+        property_set("healthd.battery_current", propToString(props.batteryCurrent, str));
+        oldprops->batteryCurrent = props.batteryCurrent;
+    }
+    if (oldprops->batteryCycleCount != props.batteryCycleCount) {
+        property_set("healthd.battery_cycle_count", propToString(props.batteryCycleCount, str));
+        oldprops->batteryCycleCount = props.batteryCycleCount;
+    }
+    if (oldprops->batteryFullCharge != props.batteryFullCharge) {
+        property_set("healthd.battery_full_charge", propToString(props.batteryFullCharge, str));
+        oldprops->batteryFullCharge = props.batteryFullCharge;
+    }
+    if (oldprops->batteryChargeCounter != props.batteryChargeCounter) {
+        property_set("healthd.battery_charge_counter", propToString(props.batteryChargeCounter, str));
+        oldprops->batteryChargeCounter = props.batteryChargeCounter;
+    }
+}
+
 BatteryMonitor::BatteryMonitor() : mHealthdConfig(nullptr), mBatteryDevicePresent(false),
     mAlwaysPluggedDevice(false), mBatteryFixedCapacity(0), mBatteryFixedTemperature(0) {
     initBatteryProperties(&props);
+    initBatteryProperties(&oldprops);
+    initBroadcastProperties();
 }
 
 int BatteryMonitor::getBatteryStatus(const char* status) {
@@ -389,6 +530,9 @@ bool BatteryMonitor::update(void) {
 
         KLOG_WARNING(LOG_TAG, "%s\n", dmesgline);
     }
+
+    // Broadcast updated properties
+    broadcastProperties(&oldprops, props);
 
     healthd_mode_ops->battery_update(&props);
     return props.chargerAcOnline | props.chargerUsbOnline |

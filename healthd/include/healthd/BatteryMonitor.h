@@ -51,7 +51,6 @@ class BatteryMonitor {
     bool mAlwaysPluggedDevice;
     int mBatteryFixedCapacity;
     int mBatteryFixedTemperature;
-    struct BatteryProperties oldprops;
     struct BatteryProperties props;
 
     int getBatteryStatus(const char* status);

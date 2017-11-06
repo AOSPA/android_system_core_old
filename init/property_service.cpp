@@ -488,6 +488,49 @@ static int check_rlim_action() {
     return 0;
 }
 
+/* From Magisk@jni/magiskhide/hide_utils.c */
+static const char *cts_prop_key[] = {
+	"ro.boot.verifiedbootstate",
+	"ro.boot.flash.locked",
+	"ro.boot.selinux",
+	"ro.boot.veritymode",
+	"ro.boot.warranty_bit",
+	"ro.warranty_bit",
+	"ro.debuggable",
+	"ro.secure",
+	"ro.build.type",
+	"ro.build.tags",
+	"ro.build.selinux",
+	NULL
+};
+
+static const char *cts_prop_value[] = {
+	"green",
+	"1",
+	"enforcing",
+	"enforcing",
+	"0",
+	"0",
+	"0",
+	"1",
+	"user",
+	"release-keys",
+	"1",
+	NULL
+};
+
+static void workaround_cts_properties() {
+	NOTICE("cts: Hiding sensitive props\n");
+
+	// Hide all sensitive props
+	std::string value;
+	for (int i = 0; cts_prop_key[i]; ++i) {
+		value = property_get(cts_prop_key[i]);
+		if (value != cts_prop_value[i])
+			property_set(cts_prop_key[i], cts_prop_value[i]);
+	}
+}
+
 /* When booting an encrypted system, /data is not mounted when the
  * property service is started, so any properties stored there are
  * not loaded.  Vold triggers init to load these properties once it
@@ -556,6 +599,9 @@ void load_system_props() {
      * overrides
      */
     vendor_load_properties();
+
+    /* Workaround CTS */
+    workaround_cts_properties();
 
     /* Restore the normal property override security after init extension is executed. */
     weaken_prop_override_security = false;

@@ -3,6 +3,7 @@ phony {
     required: [
         "bzip2",
         "grep",
+        "grep_vendor",
         "gzip",
         "mkshrc",
         "mkshrc_vendor",
@@ -12,5 +13,6 @@ phony {
         "toolbox",
         "toybox",
         "toybox_vendor",
+        "toolbox_vendor",
     ],
 }
